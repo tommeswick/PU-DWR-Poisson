@@ -174,6 +174,8 @@ private:
 			      const unsigned int component) const;
   
   void compute_boundary_tensor ();
+  void compute_middle_line();
+  void compute_half_domain();
   void compute_functional_values ();
 
   // Local adaptive mesh refinement
@@ -263,7 +265,7 @@ Poisson_PU_DWR_Problem<dim>::Poisson_PU_DWR_Problem (const unsigned int degree)
 
                 // Lowest order FE to gather neighboring information
 		// see Richter/Wick; JCAM, 2015
-		fe_pou (FE_Q<dim>(1), 1),
+		fe_pou (FE_Q<dim>(3), 1),
 		dof_handler_pou (triangulation),
 
 		timer (std::cout, TimerOutput::summary, TimerOutput::cpu_times)		
@@ -1472,7 +1474,8 @@ void Poisson_PU_DWR_Problem<dim>::compute_boundary_tensor()
     
   const QGauss<dim-1> face_quadrature_formula (degree+2);
   FEFaceValues<dim> fe_face_values (fe_primal, face_quadrature_formula, 
-				    update_values | update_gradients | update_normal_vectors | 
+				    update_values | update_quadrature_points 
+				    | update_gradients | update_normal_vectors | 
 				    update_JxW_values);
   
   const unsigned int dofs_per_cell = fe_primal.dofs_per_cell;
@@ -1506,10 +1509,10 @@ void Poisson_PU_DWR_Problem<dim>::compute_boundary_tensor()
 	     for (unsigned int q=0; q<n_face_q_points; ++q)
 	       {
 		 Tensor<2,dim> grad_u;
-		 grad_u[0][0] = face_solution_grads[q][0][0];
-		 grad_u[0][1] = face_solution_grads[q][0][1];
-		 grad_u[1][0] = face_solution_grads[q][1][0];
-		 grad_u[1][1] = face_solution_grads[q][1][1];
+		 grad_u[0][0] = face_solution_grads[q][0][0]; // f=1
+		 grad_u[0][1] = face_solution_grads[q][0][1]; // f=1
+		 grad_u[1][0] = face_solution_grads[q][1][0]; // f=0
+		 grad_u[1][1] = face_solution_grads[q][1][1]; // f=0
 
 		 value -= grad_u * 
 		   fe_face_values.normal_vector(q) * fe_face_values.JxW(q); 
@@ -1525,17 +1528,125 @@ void Poisson_PU_DWR_Problem<dim>::compute_boundary_tensor()
    std::cout << "Face uy:   "  << "   " << std::setprecision(16) << value[1] << std::endl;
 
    // TODO
-   std::cout << "Aborting: No reference values yet computed." << std::endl;
-   abort(); 
-   reference_value = 0.0; // TODO (compute on sufficiently fine mesh or analytical value) 
- 
-   exact_error_local = 0.0;
-   exact_error_local = std::abs(value[0] - reference_value);
+   //std::cout << "Aborting: No reference values yet computed." << std::endl;
+   //abort(); 
+   //reference_value = 0.0; // TODO (compute on sufficiently fine mesh or analytical value) 
+   //
+   //exact_error_local = 0.0;
+   //exact_error_local = std::abs(value[0] - reference_value);
    
 
 }
 
+template <int dim>
+void Poisson_PU_DWR_Problem<dim>::compute_middle_line()
+{
+  const QGauss<dim-1> face_quadrature_formula (degree+2);
+  FEFaceValues<dim> fe_face_values (fe_primal, face_quadrature_formula, 
+				    update_values | update_quadrature_points | 
+				    update_gradients | update_normal_vectors | 
+				    update_JxW_values);
+  
+  const unsigned int n_face_q_points = face_quadrature_formula.size();
 
+  std::vector<Vector<double> >  face_solution_values (n_face_q_points, 
+						      Vector<double> (dim));
+
+  std::vector<std::vector<Tensor<1,dim> > > 
+    face_solution_grads (n_face_q_points, std::vector<Tensor<1,dim> > (dim));
+  
+  double value = 0.0;
+  
+  double eps = 1.0e-6;
+  double eval_line = 0.5;
+
+  typename DoFHandler<dim>::active_cell_iterator
+    cell = dof_handler_primal.begin_active(),
+    endc = dof_handler_primal.end();
+
+   for (; cell!=endc; ++cell)
+     {
+
+       for (unsigned int face=0; face<GeometryInfo<dim>::faces_per_cell; ++face)
+	 {
+	   fe_face_values.reinit (cell, face);
+	   fe_face_values.get_function_values (solution_primal, face_solution_values);
+	   fe_face_values.get_function_gradients (solution_primal, face_solution_grads);
+	   
+	   for (unsigned int q=0; q<n_face_q_points; ++q)
+	     {
+	       if ((fe_face_values.quadrature_point(q)[1]
+		    < (eval_line + eps))
+		   && (fe_face_values.quadrature_point(q)[1]
+		       > (eval_line - eps)))
+		 {
+		   Tensor<1,dim> u;
+		   u[0] = face_solution_values[q](0); // f=1
+		   u[1] = face_solution_values[q](1); // f=0
+		   
+		   value += u[0] * fe_face_values.JxW(q); 
+		   
+		  } // end middle line id
+
+	     } // end face q points
+	   
+	 } // end faces
+
+     } // end element
+
+   std::cout << "Middle line u:   "  << "   " << std::setprecision(16) << value << std::endl;
+
+
+
+}
+
+template <int dim>
+void Poisson_PU_DWR_Problem<dim>::compute_half_domain()
+{
+
+  QGauss<dim>   quadrature_formula(degree+2);
+  FEValues<dim> fe_values (fe_primal, quadrature_formula,
+                           update_values    |
+                           update_quadrature_points  |
+                           update_JxW_values |
+                           update_gradients);
+  const unsigned int   n_q_points      = quadrature_formula.size();
+  
+  std::vector<Vector<double> >  solution_values (n_q_points, 
+						      Vector<double> (dim));  
+
+  double value = 0.0;
+  
+  typename DoFHandler<dim>::active_cell_iterator
+    cell = dof_handler_primal.begin_active(),
+    endc = dof_handler_primal.end();
+
+   for (; cell!=endc; ++cell)
+     {
+       fe_values.reinit (cell);
+       fe_values.get_function_values (solution_primal, solution_values);
+
+       for (unsigned int q=0; q<n_q_points; ++q)
+	 {
+	   Tensor<1,dim> u;
+	   u[0] = solution_values[q](0); // f=1
+	   u[1] = solution_values[q](1); // f=0
+	   
+	   // Upper half domain
+	   if (fe_values.quadrature_point(q)[1] >= 0.5)
+	     value += u[0] * fe_values.JxW(q); 
+	   
+	 }
+
+     } // end element
+
+   std::cout << "Half domain u:   "  << "   " << std::setprecision(16) << value << std::endl;
+
+
+
+
+
+}
 
 
 // Here, we compute the two quantities of interest: 
@@ -1561,7 +1672,9 @@ void Poisson_PU_DWR_Problem<dim>::compute_functional_values()
   std::cout << "------------------" << std::endl;
   
   // Compute boundary line integral
-  // compute_boundary_tensor();
+  compute_boundary_tensor();
+  compute_middle_line();
+  compute_half_domain();
 
   std::cout << "------------------" << std::endl;
   
@@ -2149,7 +2262,3 @@ int main ()
 
   return 0;
 }
-
-
-
-
