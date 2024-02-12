@@ -3,12 +3,12 @@
   Leibniz University Hannover
   Institute for Applied Mathematics
  
-  Date:   Aug 15, 2022
+  Date:   Aug 15, 2022, Feb 12, 2024
   E-Mail: thomas.wick@ifam.uni-hannover.de
   Web:    www.thomaswick.org
  
 
-  This code is based on the deal.II.9.1.0 version and
+  This code is based on the deal.II.9.5.1 version and
   licensed under the "GNU Lesser General Public License (LGPL)"
   with all information in LICENSE.
   Copyright 2022: Thomas Wick 
@@ -193,7 +193,7 @@ private:
   FESystem<dim>        fe_primal;
   DoFHandler<dim>      dof_handler_primal;
 
-  ConstraintMatrix     constraints_primal;
+  AffineConstraints<double>       constraints_primal;
   
   BlockSparsityPattern      sparsity_pattern_primal; 
   BlockSparseMatrix<double> system_matrix_primal; 
@@ -207,7 +207,7 @@ private:
   FESystem<dim>        fe_adjoint;
   DoFHandler<dim>      dof_handler_adjoint;
 
-  ConstraintMatrix     constraints_adjoint;
+  AffineConstraints<double>       constraints_adjoint;
   
   BlockSparsityPattern      sparsity_pattern_adjoint; 
   BlockSparseMatrix<double> system_matrix_adjoint; 
@@ -333,7 +333,7 @@ void Poisson_PU_DWR_Problem<dim>::set_runtime_parameters ()
 template <int dim>
 void Poisson_PU_DWR_Problem<dim>::setup_system_primal ()
 {
-  timer.enter_section("Setup system.");
+  timer.enter_subsection("Setup system.");
 
   system_matrix_primal.clear ();
   
@@ -355,7 +355,7 @@ void Poisson_PU_DWR_Problem<dim>::setup_system_primal ()
   
   // Two blocks: velocity and pressure
   std::vector<unsigned int> dofs_per_block (1);
-  DoFTools::count_dofs_per_block (dof_handler_primal, dofs_per_block, block_component);  
+  dofs_per_block = DoFTools::count_dofs_per_fe_block (dof_handler_primal, block_component);  
   const unsigned int n_u = dofs_per_block[0];
 
   std::cout << "Elements:\t"
@@ -401,7 +401,7 @@ void Poisson_PU_DWR_Problem<dim>::setup_system_primal ()
 
   system_rhs_primal.collect_sizes ();
 
-  timer.exit_section(); 
+  timer.leave_subsection(); 
 }
 
 
@@ -416,7 +416,7 @@ void Poisson_PU_DWR_Problem<dim>::setup_system_primal ()
 template <int dim>
 void Poisson_PU_DWR_Problem<dim>::assemble_matrix_primal ()
 {
-  timer.enter_section("Assemble primal matrix.");
+  timer.enter_subsection("Assemble primal matrix.");
   system_matrix_primal = 0;
      
   QGauss<dim>   quadrature_formula(degree+2);  
@@ -533,7 +533,7 @@ void Poisson_PU_DWR_Problem<dim>::assemble_matrix_primal ()
       
     }   // end element
   
-  timer.exit_section();
+  timer.leave_subsection();
 }
 
 
@@ -546,7 +546,7 @@ template <int dim>
 void
 Poisson_PU_DWR_Problem<dim>::assemble_rhs_primal ()
 {
-  timer.enter_section("Assemble primal rhs.");
+  timer.enter_subsection("Assemble primal rhs.");
   system_rhs_primal = 0;
   
   QGauss<dim>   quadrature_formula(degree+2);
@@ -643,7 +643,7 @@ Poisson_PU_DWR_Problem<dim>::assemble_rhs_primal ()
       
     }  // end element
       
-  timer.exit_section();
+  timer.leave_subsection();
 }
 
 
@@ -662,21 +662,21 @@ Poisson_PU_DWR_Problem<dim>::set_initial_bc_primal ()
  
     VectorTools::interpolate_boundary_values (dof_handler_primal,
 					      0,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
 					      boundary_values,
 					      component_mask);    
 
 
     VectorTools::interpolate_boundary_values (dof_handler_primal,
                                               2,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
                                               boundary_values,
                                               component_mask);
 
 
     VectorTools::interpolate_boundary_values (dof_handler_primal,
                                               3,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
                                               boundary_values,
                                               component_mask);
     
@@ -685,7 +685,7 @@ Poisson_PU_DWR_Problem<dim>::set_initial_bc_primal ()
     
     VectorTools::interpolate_boundary_values (dof_handler_primal,
 					      1,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
 					      boundary_values,
 					      component_mask);
     
@@ -710,19 +710,19 @@ Poisson_PU_DWR_Problem<dim>::set_newton_bc_primal ()
    
     VectorTools::interpolate_boundary_values (dof_handler_primal,
 					      0,
-					      ZeroFunction<dim>(dim),                           
+					      dealii::Functions::ZeroFunction<dim>(dim),                           
 					      constraints_primal,
 					      component_mask); 
 
     VectorTools::interpolate_boundary_values (dof_handler_primal,
                                               2,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
                                               constraints_primal,
                                               component_mask);
     
     VectorTools::interpolate_boundary_values (dof_handler_primal,
                                               3,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
                                               constraints_primal,
                                               component_mask);
 
@@ -731,7 +731,7 @@ Poisson_PU_DWR_Problem<dim>::set_newton_bc_primal ()
     
     VectorTools::interpolate_boundary_values (dof_handler_primal,
 					      1,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
 					      constraints_primal,
 					      component_mask);
 }  
@@ -744,7 +744,7 @@ template <int dim>
 void 
 Poisson_PU_DWR_Problem<dim>::solve_primal () 
 {
-  timer.enter_section("Solve primal linear system.");
+  timer.enter_subsection("Solve primal linear system.");
   Vector<double> sol, rhs;    
   sol = newton_update_primal;    
   rhs = system_rhs_primal;
@@ -753,7 +753,7 @@ Poisson_PU_DWR_Problem<dim>::solve_primal ()
   newton_update_primal = sol;
   
   constraints_primal.distribute (newton_update_primal);
-  timer.exit_section();
+  timer.leave_subsection();
 }
 
 // This is the Newton iteration with simple linesearch backtracking 
@@ -852,7 +852,7 @@ void Poisson_PU_DWR_Problem<dim>::newton_iteration_primal ()
       else 
 	std::cout << " " << '\t' ;
       std::cout << line_search_step  << '\t' 
-		<< std::scientific << timer_newton ()
+		<< std::scientific << timer_newton.cpu_time ()
 		<< std::endl;
 
 
@@ -862,7 +862,7 @@ void Poisson_PU_DWR_Problem<dim>::newton_iteration_primal ()
     }
 
   timer_newton_global.stop();
-  std::cout << "CPU time solving primal system:  " << timer_newton_global() << std::endl;
+  std::cout << "CPU time solving primal system:  " << timer_newton_global.cpu_time () << std::endl;
   timer_newton_global.reset();
 
 
@@ -878,7 +878,7 @@ void Poisson_PU_DWR_Problem<dim>::newton_iteration_primal ()
 template <int dim>
 void Poisson_PU_DWR_Problem<dim>::setup_system_adjoint ()
 {
-  timer.enter_section("Setup adjoint system.");
+  timer.enter_subsection("Setup adjoint system.");
 
   system_matrix_adjoint.clear ();
   
@@ -899,7 +899,7 @@ void Poisson_PU_DWR_Problem<dim>::setup_system_adjoint ()
   constraints_adjoint.close ();
   
   std::vector<unsigned int> dofs_per_block (1);
-  DoFTools::count_dofs_per_block (dof_handler_adjoint, dofs_per_block, block_component);  
+  dofs_per_block = DoFTools::count_dofs_per_fe_block (dof_handler_adjoint, block_component);  
   const unsigned int n_u = dofs_per_block[0];
 
   std::cout << "DoFs (adjoint):\t"
@@ -936,7 +936,7 @@ void Poisson_PU_DWR_Problem<dim>::setup_system_adjoint ()
 
   system_rhs_adjoint.collect_sizes ();
 
-  timer.exit_section(); 
+  timer.leave_subsection(); 
 }
 
 
@@ -945,7 +945,7 @@ void Poisson_PU_DWR_Problem<dim>::setup_system_adjoint ()
 template <int dim>
 void Poisson_PU_DWR_Problem<dim>::assemble_matrix_adjoint ()
 {
-  timer.enter_section("Assemble adjoint matrix.");
+  timer.enter_subsection("Assemble adjoint matrix.");
   system_matrix_adjoint = 0;
      
   // Choose quadrature rule sufficiently high with respect 
@@ -1105,7 +1105,7 @@ void Poisson_PU_DWR_Problem<dim>::assemble_matrix_adjoint ()
       
     } // end element  
   
-  timer.exit_section();
+  timer.leave_subsection();
 }
 
 
@@ -1115,7 +1115,7 @@ template <int dim>
 void
 Poisson_PU_DWR_Problem<dim>::assemble_rhs_adjoint_boundary ()
 {
-  timer.enter_section("Assemble adjoint rhs.");
+  timer.enter_subsection("Assemble adjoint rhs.");
   system_rhs_adjoint = 0;
   
   // Info: Quadrature degree must be sufficiently high
@@ -1195,7 +1195,7 @@ Poisson_PU_DWR_Problem<dim>::assemble_rhs_adjoint_boundary ()
       
     }  // end cell
       
-  timer.exit_section();
+  timer.leave_subsection();
 }
 
 
@@ -1206,7 +1206,7 @@ Poisson_PU_DWR_Problem<dim>::assemble_rhs_adjoint_point_value ()
   // Not yet implemented.
   //abort();
 
-  timer.enter_section("Assemble adjoint rhs.");
+  timer.enter_subsection("Assemble adjoint rhs.");
   system_rhs_adjoint = 0;
   
   Point<dim> evaluation_point(0.5,0.5);
@@ -1234,7 +1234,7 @@ Poisson_PU_DWR_Problem<dim>::assemble_rhs_adjoint_point_value ()
   
 
       
-  timer.exit_section();
+  timer.leave_subsection();
 
 
 
@@ -1258,19 +1258,19 @@ Poisson_PU_DWR_Problem<dim>::set_bc_adjoint ()
    
     VectorTools::interpolate_boundary_values (dof_handler_adjoint,
 					      0,
-					      ZeroFunction<dim>(dim),                                  
+					      dealii::Functions::ZeroFunction<dim>(dim),      
 					      constraints_adjoint,
 					      component_mask); 
 
     VectorTools::interpolate_boundary_values (dof_handler_adjoint,
                                               2,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
                                               constraints_adjoint,
                                               component_mask);
     
     VectorTools::interpolate_boundary_values (dof_handler_adjoint,
                                               3,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
                                               constraints_adjoint,
                                               component_mask);
 
@@ -1279,7 +1279,7 @@ Poisson_PU_DWR_Problem<dim>::set_bc_adjoint ()
     
     VectorTools::interpolate_boundary_values (dof_handler_adjoint,
 					      1,
-					      ZeroFunction<dim>(dim),  
+					      dealii::Functions::ZeroFunction<dim>(dim),  
 					      constraints_adjoint,
 					      component_mask);
 }  
@@ -1314,7 +1314,7 @@ Poisson_PU_DWR_Problem<dim>::solve_adjoint ()
   timer_solve_adjoint.start();
 
   // Linear solution
-  timer.enter_section("Solve linear adjoint system.");
+  timer.enter_subsection("Solve linear adjoint system.");
   Vector<double> sol, rhs;    
   sol = solution_adjoint;    
   rhs = system_rhs_adjoint;
@@ -1328,11 +1328,11 @@ Poisson_PU_DWR_Problem<dim>::solve_adjoint ()
   constraints_adjoint.distribute (solution_adjoint);
   timer_solve_adjoint.stop();
 
-  std::cout << "CPU time solving adjoint system: " << timer_solve_adjoint() << std::endl;
+  std::cout << "CPU time solving adjoint system: " << timer_solve_adjoint.cpu_time() << std::endl;
 
   timer_solve_adjoint.reset();
 
-  timer.exit_section();
+  timer.leave_subsection();
 
 
 
@@ -1737,12 +1737,12 @@ double Poisson_PU_DWR_Problem<dim>::compute_error_indicators_a_la_PU_DWR (const 
   
   // Implement the interpolation operator
   // (z-z_h)=(z-I_hz)
-  ConstraintMatrix dual_hanging_node_constraints;
+  AffineConstraints<double> dual_hanging_node_constraints;
   DoFTools::make_hanging_node_constraints (dof_handler_adjoint,
 					   dual_hanging_node_constraints);
   dual_hanging_node_constraints.close();
   
-  ConstraintMatrix primal_hanging_node_constraints;
+  AffineConstraints<double> primal_hanging_node_constraints;
   DoFTools::make_hanging_node_constraints (dof_handler_primal,
 					   primal_hanging_node_constraints);
   primal_hanging_node_constraints.close();
@@ -1751,8 +1751,7 @@ double Poisson_PU_DWR_Problem<dim>::compute_error_indicators_a_la_PU_DWR (const 
   // Construct a local primal solution that 
   // has the length of the adjoint vector
   std::vector<unsigned int> dofs_per_block (1);
-  DoFTools::count_dofs_per_block (dof_handler_adjoint, 
-				  dofs_per_block, block_component);  
+  dofs_per_block = DoFTools::count_dofs_per_fe_block (dof_handler_adjoint, block_component);  
   const unsigned int n_u = dofs_per_block[0];
   
   BlockVector<double> solution_primal_of_adjoint_length;
@@ -1948,7 +1947,7 @@ double Poisson_PU_DWR_Problem<dim>::compute_error_indicators_a_la_PU_DWR (const 
    
    
    // Finally, we eliminate and distribute hanging nodes in the error estimator
-   ConstraintMatrix dual_hanging_node_constraints_pou;
+   AffineConstraints<double> dual_hanging_node_constraints_pou;
    DoFTools::make_hanging_node_constraints (dof_handler_pou,
 					    dual_hanging_node_constraints_pou);
    dual_hanging_node_constraints_pou.close();
